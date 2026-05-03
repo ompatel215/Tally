@@ -42,34 +42,35 @@ import {
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 
-const accountSchema = z.object({
-  code: z.string().min(1, "Code is required"),
+const vendorSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  type: z.enum(["asset", "liability", "equity", "revenue", "expense"]),
+  type: z.enum(["vendor", "customer", "both"]),
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
+  phone: z.string().optional(),
 });
 
-type Account = {
+type Vendor = {
   id: string;
-  code: string;
   name: string;
   type: string;
-  is_active: boolean;
+  email: string | null;
+  phone: string | null;
 };
 
-export default function AccountsPage() {
+export default function VendorsPage() {
   const supabase = createClient();
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const form = useForm<z.infer<typeof accountSchema>>({
-    resolver: zodResolver(accountSchema),
-    defaultValues: { code: "", name: "", type: "expense" },
+  const form = useForm<z.infer<typeof vendorSchema>>({
+    resolver: zodResolver(vendorSchema),
+    defaultValues: { name: "", type: "vendor", email: "", phone: "" },
   });
 
   useEffect(() => {
@@ -84,75 +85,69 @@ export default function AccountsPage() {
       if (!membership) return;
       setOrgId(membership.organization_id);
       const { data } = await supabase
-        .from("chart_of_accounts")
-        .select("id, code, name, type, is_active")
+        .from("entities")
+        .select("id, name, type, email, phone")
         .eq("organization_id", membership.organization_id)
-        .order("code");
-      setAccounts(data || []);
+        .order("name");
+      setVendors(data || []);
       setLoading(false);
     }
     load();
   }, []);
 
   function openCreate() {
-    setEditingAccount(null);
-    form.reset({ code: "", name: "", type: "expense" });
+    setEditingVendor(null);
+    form.reset({ name: "", type: "vendor", email: "", phone: "" });
     setDialogOpen(true);
   }
 
-  function openEdit(account: Account) {
-    setEditingAccount(account);
-    form.reset({ code: account.code, name: account.name, type: account.type as any });
+  function openEdit(vendor: Vendor) {
+    setEditingVendor(vendor);
+    form.reset({
+      name: vendor.name,
+      type: vendor.type as any,
+      email: vendor.email || "",
+      phone: vendor.phone || "",
+    });
     setDialogOpen(true);
   }
 
-  async function onSubmit(values: z.infer<typeof accountSchema>) {
+  async function onSubmit(values: z.infer<typeof vendorSchema>) {
     if (!orgId) return;
     setIsSubmitting(true);
     try {
-      if (editingAccount) {
+      const payload = {
+        name: values.name,
+        type: values.type,
+        email: values.email || null,
+        phone: values.phone || null,
+        organization_id: orgId,
+      };
+      if (editingVendor) {
         const { error } = await supabase
-          .from("chart_of_accounts")
-          .update({ code: values.code, name: values.name, type: values.type })
-          .eq("id", editingAccount.id);
+          .from("entities")
+          .update(payload)
+          .eq("id", editingVendor.id);
         if (error) throw error;
-        setAccounts((prev) =>
-          prev
-            .map((a) => (a.id === editingAccount.id ? { ...a, ...values } : a))
-            .sort((a, b) => a.code.localeCompare(b.code))
+        setVendors((prev) =>
+          prev.map((v) => (v.id === editingVendor.id ? { ...v, ...payload } : v))
         );
-        toast.success("Account updated");
+        toast.success("Vendor updated");
       } else {
         const { data, error } = await supabase
-          .from("chart_of_accounts")
-          .insert({ ...values, organization_id: orgId, is_active: true })
+          .from("entities")
+          .insert(payload)
           .select()
           .single();
         if (error) throw error;
-        setAccounts((prev) => [...prev, data].sort((a, b) => a.code.localeCompare(b.code)));
-        toast.success("Account created");
+        setVendors((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+        toast.success("Vendor created");
       }
       setDialogOpen(false);
     } catch (err: any) {
-      toast.error(err.message || "Failed to save account");
+      toast.error(err.message || "Failed to save vendor");
     } finally {
       setIsSubmitting(false);
-    }
-  }
-
-  async function toggleActive(account: Account) {
-    try {
-      const { error } = await supabase
-        .from("chart_of_accounts")
-        .update({ is_active: !account.is_active })
-        .eq("id", account.id);
-      if (error) throw error;
-      setAccounts((prev) =>
-        prev.map((a) => (a.id === account.id ? { ...a, is_active: !a.is_active } : a))
-      );
-      toast.success(account.is_active ? "Account deactivated" : "Account activated");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to update account");
     }
   }
 
@@ -160,13 +155,13 @@ export default function AccountsPage() {
     if (!deletingId) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from("chart_of_accounts").delete().eq("id", deletingId);
+      const { error } = await supabase.from("entities").delete().eq("id", deletingId);
       if (error) throw error;
-      setAccounts((prev) => prev.filter((a) => a.id !== deletingId));
-      toast.success("Account deleted");
+      setVendors((prev) => prev.filter((v) => v.id !== deletingId));
+      toast.success("Vendor deleted");
       setDeletingId(null);
     } catch (err: any) {
-      toast.error(err.message || "Failed to delete account");
+      toast.error(err.message || "Failed to delete vendor");
     } finally {
       setIsDeleting(false);
     }
@@ -176,13 +171,11 @@ export default function AccountsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Chart of Accounts</h1>
-          <p className="text-muted-foreground">
-            Manage your organization&apos;s financial accounts and categories.
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight">Vendors & Customers</h1>
+          <p className="text-muted-foreground">Manage your vendors, suppliers, and customers.</p>
         </div>
         <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> Add Account
+          <Plus className="mr-2 h-4 w-4" /> Add Vendor
         </Button>
       </div>
 
@@ -190,11 +183,11 @@ export default function AccountsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[100px]">Code</TableHead>
-              <TableHead>Account Name</TableHead>
+              <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-[120px]"></TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead className="w-[80px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -204,43 +197,31 @@ export default function AccountsPage() {
                   Loading...
                 </TableCell>
               </TableRow>
-            ) : accounts.length === 0 ? (
+            ) : vendors.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                  No accounts yet. Add your first account to get started.
+                  No vendors yet. Add your first vendor to get started.
                 </TableCell>
               </TableRow>
             ) : (
-              accounts.map((account) => (
-                <TableRow key={account.id}>
-                  <TableCell className="font-mono font-medium">{account.code}</TableCell>
-                  <TableCell className="font-medium">{account.name}</TableCell>
+              vendors.map((vendor) => (
+                <TableRow key={vendor.id}>
+                  <TableCell className="font-medium">{vendor.name}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="capitalize">{account.type}</Badge>
+                    <Badge variant="outline" className="capitalize">{vendor.type}</Badge>
                   </TableCell>
-                  <TableCell>
-                    <button
-                      onClick={() => toggleActive(account)}
-                      className="flex items-center gap-2 group"
-                    >
-                      <div
-                        className={`h-2 w-2 rounded-full transition-colors ${account.is_active ? "bg-emerald-500" : "bg-slate-300"}`}
-                      />
-                      <span className="text-sm group-hover:underline">
-                        {account.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </button>
-                  </TableCell>
+                  <TableCell className="text-muted-foreground">{vendor.email || "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{vendor.phone || "—"}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(account)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(vendor)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-destructive hover:text-destructive"
-                        onClick={() => setDeletingId(account.id)}
+                        onClick={() => setDeletingId(vendor.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -257,19 +238,54 @@ export default function AccountsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingAccount ? "Edit Account" : "Add Account"}</DialogTitle>
+            <DialogTitle>{editingVendor ? "Edit Vendor" : "Add Vendor"}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Acme Corp" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="vendor">Vendor</SelectItem>
+                        <SelectItem value="customer">Customer</SelectItem>
+                        <SelectItem value="both">Both</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="code"
+                  name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Code</FormLabel>
+                      <FormLabel>Email (optional)</FormLabel>
                       <FormControl>
-                        <Input placeholder="6500" className="font-mono" {...field} />
+                        <Input type="email" placeholder="contact@example.com" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -277,49 +293,25 @@ export default function AccountsPage() {
                 />
                 <FormField
                   control={form.control}
-                  name="type"
+                  name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Type</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="asset">Asset</SelectItem>
-                          <SelectItem value="liability">Liability</SelectItem>
-                          <SelectItem value="equity">Equity</SelectItem>
-                          <SelectItem value="revenue">Revenue</SelectItem>
-                          <SelectItem value="expense">Expense</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <FormLabel>Phone (optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="+1 (555) 000-0000" {...field} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Account Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Professional Services" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {editingAccount ? "Save Changes" : "Add Account"}
+                  {editingVendor ? "Save Changes" : "Add Vendor"}
                 </Button>
               </DialogFooter>
             </form>
@@ -331,10 +323,10 @@ export default function AccountsPage() {
       <Dialog open={!!deletingId} onOpenChange={(o) => !o && setDeletingId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Account</DialogTitle>
+            <DialogTitle>Delete Vendor</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete this account? Any expenses linked to it may be affected.
+            Are you sure you want to delete this vendor? This action cannot be undone.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeletingId(null)}>Cancel</Button>
