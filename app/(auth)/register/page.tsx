@@ -37,7 +37,7 @@ export default function RegisterPage() {
     try {
       const supabase = createClient();
 
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -51,8 +51,32 @@ export default function RegisterPage() {
       });
       if (signUpError) throw signUpError;
 
-      setLoading(false);
-      router.push("/register/confirm");
+      // If we got a session, email confirmation is disabled — set up org now
+      if (data.session && data.user) {
+        const resolvedOrgName = orgName || `${firstName}'s Organization`;
+
+        const { data: org, error: orgError } = await supabase
+          .from("organizations")
+          .insert({ name: resolvedOrgName })
+          .select()
+          .single();
+        if (orgError) throw orgError;
+
+        const { error: memberError } = await supabase
+          .from("organization_members")
+          .insert({ organization_id: org.id, user_id: data.user.id, role: "owner" });
+        if (memberError) throw memberError;
+
+        await supabase.from("chart_of_accounts").insert(
+          DEFAULT_ACCOUNTS.map((a) => ({ ...a, organization_id: org.id }))
+        );
+
+        router.push("/dashboard");
+        router.refresh();
+      } else {
+        // Email confirmation required — org setup happens in /auth/callback
+        router.push("/register/confirm");
+      }
     } catch (err: any) {
       setError(err.message || "Failed to create account");
       setLoading(false);
