@@ -58,16 +58,6 @@ export function Sidebar() {
         })}
       </nav>
       
-      <div className="p-4 border-t">
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Plan</p>
-          <p className="text-sm font-medium">Professional</p>
-          <div className="mt-2 w-full bg-muted h-1.5 rounded-full overflow-hidden">
-            <div className="bg-primary h-full w-3/4" />
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-1">75% of usage used</p>
-        </div>
-      </div>
     </div>
   );
 }
