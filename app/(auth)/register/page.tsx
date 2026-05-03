@@ -8,17 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
-
-const DEFAULT_ACCOUNTS = [
-  { code: "1000", name: "Checking Account", type: "asset" },
-  { code: "2000", name: "Accounts Payable", type: "liability" },
-  { code: "4000", name: "Revenue", type: "revenue" },
-  { code: "6000", name: "Advertising & Marketing", type: "expense" },
-  { code: "6100", name: "Office Supplies", type: "expense" },
-  { code: "6200", name: "Travel & Meals", type: "expense" },
-  { code: "6300", name: "Software & Subscriptions", type: "expense" },
-  { code: "6400", name: "Utilities", type: "expense" },
-];
+import { registerWithKey } from "@/app/actions/register";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -27,6 +17,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
+  const [accessKey, setAccessKey] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,48 +26,20 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      const supabase = createClient();
-
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-            org_name: orgName || `${firstName}'s Organization`,
-          },
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (signUpError) throw signUpError;
-
-      // If we got a session, email confirmation is disabled — set up org now
-      if (data.session && data.user) {
-        const resolvedOrgName = orgName || `${firstName}'s Organization`;
-
-        const { data: org, error: orgError } = await supabase
-          .from("organizations")
-          .insert({ name: resolvedOrgName })
-          .select()
-          .single();
-        if (orgError) throw orgError;
-
-        const { error: memberError } = await supabase
-          .from("organization_members")
-          .insert({ organization_id: org.id, user_id: data.user.id, role: "owner" });
-        if (memberError) throw memberError;
-
-        await supabase.from("chart_of_accounts").insert(
-          DEFAULT_ACCOUNTS.map((a) => ({ ...a, organization_id: org.id }))
-        );
-
-        router.push("/dashboard");
-        router.refresh();
-      } else {
-        // Email confirmation required — org setup happens in /auth/callback
-        router.push("/register/confirm");
+      const result = await registerWithKey({ firstName, lastName, email, password, orgName, key: accessKey });
+      if (result.error) {
+        setError(result.error);
+        setLoading(false);
+        return;
       }
+
+      // Account created — sign in client-side
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) throw signInError;
+
+      router.push("/dashboard");
+      router.refresh();
     } catch (err: any) {
       setError(err.message || "Failed to create account");
       setLoading(false);
@@ -97,6 +60,17 @@ export default function RegisterPage() {
             {error && (
               <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">{error}</p>
             )}
+            <div className="grid gap-2">
+              <Label htmlFor="access-key">Access key</Label>
+              <Input
+                id="access-key"
+                type="password"
+                placeholder="Enter access key"
+                value={accessKey}
+                onChange={(e) => setAccessKey(e.target.value)}
+                required
+              />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="first-name">First name</Label>
