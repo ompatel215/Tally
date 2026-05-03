@@ -106,8 +106,41 @@ export default function ReceiptsPage() {
         .single();
       if (insertError) throw insertError;
 
-      setReceipts((prev) => [data as Receipt, ...prev]);
-      toast.success("Receipt uploaded successfully");
+      const newReceipt = data as Receipt;
+      setReceipts((prev) => [newReceipt, ...prev]);
+      toast.success("Receipt uploaded — extracting data...");
+
+      // Trigger OCR processing
+      setReceipts((prev) =>
+        prev.map((r) => r.id === newReceipt.id ? { ...r, ocr_status: "processing" } : r)
+      );
+      const res = await fetch("/api/process-receipt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ receiptId: newReceipt.id }),
+      });
+      const result = await res.json();
+      if (result.success && result.data) {
+        setReceipts((prev) =>
+          prev.map((r) =>
+            r.id === newReceipt.id
+              ? {
+                  ...r,
+                  ocr_status: "completed",
+                  extracted_amount: result.data.amount,
+                  extracted_date: result.data.date,
+                  extracted_vendor: result.data.vendor,
+                }
+              : r
+          )
+        );
+        toast.success("Receipt data extracted");
+      } else {
+        setReceipts((prev) =>
+          prev.map((r) => r.id === newReceipt.id ? { ...r, ocr_status: "failed" } : r)
+        );
+        toast.error("Could not extract receipt data");
+      }
     } catch (err: any) {
       toast.error(err.message || "Upload failed");
     } finally {
