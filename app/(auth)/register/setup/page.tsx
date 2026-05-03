@@ -47,6 +47,18 @@ export default function SetupPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      // Ensure a profiles row exists — may be missing if user registered before
+      // the auto-create trigger was added.
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert({
+          id: user.id,
+          email: user.email!,
+          first_name: user.user_metadata?.first_name ?? null,
+          last_name: user.user_metadata?.last_name ?? null,
+        }, { onConflict: "id" });
+      if (profileError) throw profileError;
+
       const { data: org, error: orgError } = await supabase
         .from("organizations")
         .insert({ name: orgName || "My Organization" })
