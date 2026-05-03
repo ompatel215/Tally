@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, FileText, Trash2, Loader2 } from "lucide-react";
+import { Upload, FileText, Trash2, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -33,6 +33,9 @@ export default function ReceiptsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [viewingReceipt, setViewingReceipt] = useState<Receipt | null>(null);
+  const [viewUrl, setViewUrl] = useState<string | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -55,6 +58,29 @@ export default function ReceiptsPage() {
     }
     load();
   }, []);
+
+  async function openReceipt(receipt: Receipt) {
+    const isPdf = receipt.file_path.toLowerCase().endsWith(".pdf");
+    setViewLoading(true);
+
+    const { data, error } = await supabase.storage
+      .from("receipts")
+      .createSignedUrl(receipt.file_path, 60);
+
+    setViewLoading(false);
+
+    if (error || !data?.signedUrl) {
+      toast.error("Could not load receipt");
+      return;
+    }
+
+    if (isPdf) {
+      window.open(data.signedUrl, "_blank");
+    } else {
+      setViewingReceipt(receipt);
+      setViewUrl(data.signedUrl);
+    }
+  }
 
   async function uploadFile(file: File) {
     if (!orgId) {
@@ -184,9 +210,24 @@ export default function ReceiptsPage() {
         ) : (
           receipts.map((receipt) => (
             <Card key={receipt.id} className="overflow-hidden flex flex-col">
-              <div className="aspect-[4/3] bg-muted flex items-center justify-center border-b">
-                <FileText className="h-12 w-12 text-muted-foreground/50" />
-              </div>
+              <button
+                className="aspect-[4/3] bg-muted flex items-center justify-center border-b hover:bg-muted/70 transition-colors cursor-pointer relative group"
+                onClick={() => openReceipt(receipt)}
+                disabled={viewLoading}
+              >
+                {viewLoading ? (
+                  <Loader2 className="h-12 w-12 text-muted-foreground/50 animate-spin" />
+                ) : (
+                  <>
+                    <FileText className="h-12 w-12 text-muted-foreground/50 group-hover:text-muted-foreground/80 transition-colors" />
+                    <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="bg-background/80 backdrop-blur-sm rounded-md px-2 py-1 text-xs font-medium flex items-center gap-1">
+                        <ExternalLink className="h-3 w-3" /> View
+                      </span>
+                    </span>
+                  </>
+                )}
+              </button>
               <CardHeader className="p-4 pb-2 flex-1">
                 <CardTitle className="text-sm truncate" title={receipt.original_filename}>
                   {receipt.original_filename}
@@ -215,6 +256,27 @@ export default function ReceiptsPage() {
           No receipts yet. Upload your first receipt to get started.
         </div>
       )}
+
+      {/* Image viewer */}
+      <Dialog open={!!viewingReceipt} onOpenChange={(o) => { if (!o) { setViewingReceipt(null); setViewUrl(null); } }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="truncate pr-8">{viewingReceipt?.original_filename}</DialogTitle>
+          </DialogHeader>
+          {viewUrl && (
+            <div className="overflow-auto max-h-[70vh] flex items-center justify-center bg-muted rounded-md">
+              <img src={viewUrl} alt={viewingReceipt?.original_filename} className="max-w-full object-contain" />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" asChild>
+              <a href={viewUrl ?? "#"} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-2 h-4 w-4" /> Open in new tab
+              </a>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <Dialog open={!!deletingId} onOpenChange={(o) => !o && setDeletingId(null)}>
