@@ -15,7 +15,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -27,8 +27,22 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // refreshing the auth token
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const url = request.nextUrl.clone()
+  const isAuthPage = url.pathname === '/login' || url.pathname === '/register'
+
+  // Unauthenticated users can only access auth pages
+  if (!user && !isAuthPage) {
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
+
+  // Authenticated users shouldn't see auth pages
+  if (user && isAuthPage) {
+    url.pathname = '/dashboard'
+    return NextResponse.redirect(url)
+  }
 
   return supabaseResponse
 }

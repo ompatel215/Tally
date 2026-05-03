@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronsUpDown, Building2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,11 +17,29 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { mockOrganizations } from "@/lib/mockData";
+import { createClient } from "@/lib/supabase/client";
+
+type Org = { id: string; name: string };
 
 export function OrgSwitcher() {
   const [open, setOpen] = useState(false);
-  const [selectedOrg, setSelectedOrg] = useState(mockOrganizations[0]);
+  const [orgs, setOrgs] = useState<Org[]>([]);
+  const [selectedOrg, setSelectedOrg] = useState<Org | null>(null);
+
+  useEffect(() => {
+    async function fetchOrgs() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("organization_members")
+        .select("organizations(id, name)");
+      const fetched: Org[] = (data ?? [])
+        .map((m: any) => m.organizations)
+        .filter(Boolean);
+      setOrgs(fetched);
+      if (fetched.length > 0) setSelectedOrg(fetched[0]);
+    }
+    fetchOrgs();
+  }, []);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -34,7 +52,7 @@ export function OrgSwitcher() {
         >
           <div className="flex items-center gap-2 truncate">
             <Building2 className="h-4 w-4 shrink-0 opacity-50" />
-            {selectedOrg.name}
+            {selectedOrg ? selectedOrg.name : "Loading..."}
           </div>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -45,7 +63,7 @@ export function OrgSwitcher() {
           <CommandList>
             <CommandEmpty>No organization found.</CommandEmpty>
             <CommandGroup>
-              {mockOrganizations.map((org) => (
+              {orgs.map((org) => (
                 <CommandItem
                   key={org.id}
                   value={org.id}
@@ -57,7 +75,7 @@ export function OrgSwitcher() {
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
-                      selectedOrg.id === org.id ? "opacity-100" : "opacity-0"
+                      selectedOrg?.id === org.id ? "opacity-100" : "opacity-0"
                     )}
                   />
                   {org.name}

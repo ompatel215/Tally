@@ -1,44 +1,102 @@
-import { 
-  ArrowUpRight, 
-  ArrowDownRight, 
-  DollarSign, 
-  Receipt, 
+import {
+  ArrowUpRight,
+  ArrowDownRight,
+  DollarSign,
+  Receipt,
   CreditCard,
-  TrendingUp
+  TrendingUp,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CashFlowChart } from "@/components/charts/CashFlowChart";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { format } from "date-fns";
+
+function getLast6Months() {
+  const now = new Date();
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    return { name: format(d, "MMM"), year: d.getFullYear(), month: d.getMonth() };
+  });
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  // 1. Fetch data for metrics
-  const { data: expenses } = await supabase.from('expenses').select('amount');
-  const { count: pendingReceipts } = await supabase
-    .from('receipts')
-    .select('*', { count: 'exact', head: true })
-    .eq('ocr_status', 'pending');
+  const months = getLast6Months();
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+  sixMonthsAgo.setDate(1);
 
-  const totalExpenses = expenses?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
-  
-  // Note: For revenue, we would normally fetch from 'deposits' or 'journal_entries' 
-  // with a revenue account type. Mocking revenue for now but using real expense sum.
-  const totalRevenue = 45231.89; 
+  const [
+    { data: expenses },
+    { count: pendingReceipts },
+    { data: recentExpenses },
+    { data: monthlyExpenses },
+    { data: revenueTransactions },
+  ] = await Promise.all([
+    supabase.from("expenses").select("amount"),
+    supabase
+      .from("receipts")
+      .select("*", { count: "exact", head: true })
+      .eq("ocr_status", "pending"),
+    supabase
+      .from("expenses")
+      .select("id, expense_date, amount, description, entities(name)")
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("expenses")
+      .select("expense_date, amount")
+      .gte("expense_date", sixMonthsAgo.toISOString().split("T")[0]),
+    supabase
+      .from("transactions")
+      .select("credit, created_at, chart_of_accounts!account_id(type)")
+      .gte("created_at", sixMonthsAgo.toISOString()),
+  ]);
+
+  const totalExpenses =
+    expenses?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
+
+  const totalRevenue =
+    (revenueTransactions ?? [])
+      .filter((t: any) => t.chart_of_accounts?.type === "revenue")
+      .reduce((acc: number, t: any) => acc + Number(t.credit), 0);
+
   const netProfit = totalRevenue - totalExpenses;
+
+  const chartData = months.map(({ name, year, month }) => {
+    const monthlyExpenseTotal = (monthlyExpenses ?? [])
+      .filter((e) => {
+        const d = new Date(e.expense_date);
+        return d.getFullYear() === year && d.getMonth() === month;
+      })
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+
+    const monthlyIncomeTotal = (revenueTransactions ?? [])
+      .filter((t: any) => {
+        if (t.chart_of_accounts?.type !== "revenue") return false;
+        const d = new Date(t.created_at);
+        return d.getFullYear() === year && d.getMonth() === month;
+      })
+      .reduce((sum: number, t: any) => sum + Number(t.credit), 0);
+
+    return { name, income: monthlyIncomeTotal, expenses: monthlyExpenseTotal };
+  });
 
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back. Here's what's happening with your business today.</p>
+          <p className="text-muted-foreground">
+            Welcome back. Here&apos;s what&apos;s happening with your business today.
+          </p>
         </div>
         <div className="flex gap-3">
           <Button asChild variant="outline">
-            <Link href="/receipts/upload">Upload Receipt</Link>
+            <Link href="/receipts">Upload Receipt</Link>
           </Button>
           <Button asChild>
             <Link href="/expenses/new">Add Expense</Link>
@@ -53,13 +111,8 @@ export default async function DashboardPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${totalRevenue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <span className="text-emerald-500 flex items-center">
-                <ArrowUpRight className="h-3 w-3" /> +20.1%
-              </span>{" "}
-              from last month
-            </p>
+            <div className="text-2xl font-bold">${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <p className="text-xs text-muted-foreground">From revenue accounts</p>
           </CardContent>
         </Card>
         <Card>
@@ -68,13 +121,8 @@ export default async function DashboardPage() {
             <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${totalExpenses.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <span className="text-rose-500 flex items-center">
-                <ArrowDownRight className="h-3 w-3" /> +4.5%
-              </span>{" "}
-              from last month
-            </p>
+            <div className="text-2xl font-bold">${totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <p className="text-xs text-muted-foreground">Total recorded expenses</p>
           </CardContent>
         </Card>
         <Card>
@@ -84,9 +132,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{pendingReceipts || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              Require immediate action
-            </p>
+            <p className="text-xs text-muted-foreground">Require immediate action</p>
           </CardContent>
         </Card>
         <Card>
@@ -95,41 +141,44 @@ export default async function DashboardPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${netProfit.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <span className="text-emerald-500 flex items-center">
-                <ArrowUpRight className="h-3 w-3" /> +12.2%
-              </span>{" "}
-              from last month
-            </p>
+            <div className={`text-2xl font-bold ${netProfit < 0 ? "text-rose-500" : ""}`}>
+              {netProfit < 0 ? "-" : ""}${Math.abs(netProfit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-muted-foreground">Revenue minus expenses</p>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <CashFlowChart />
+        <CashFlowChart data={chartData} />
         <Card className="col-span-3">
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-8">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex items-center">
-                  <div className="ml-4 space-y-1">
-                    <p className="text-sm font-medium leading-none">
-                      Expense at Starbucks
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      May 12, 2024
-                    </p>
+            {!recentExpenses || recentExpenses.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No expenses yet. Add your first expense.
+              </p>
+            ) : (
+              <div className="space-y-8">
+                {recentExpenses.map((expense) => (
+                  <div key={expense.id} className="flex items-center">
+                    <div className="ml-4 space-y-1">
+                      <p className="text-sm font-medium leading-none">
+                        {expense.description || (expense as any).entities?.name || "Expense"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {format(new Date(expense.expense_date), "MMM d, yyyy")}
+                      </p>
+                    </div>
+                    <div className="ml-auto font-medium text-rose-500">
+                      -${Number(expense.amount).toFixed(2)}
+                    </div>
                   </div>
-                  <div className="ml-auto font-medium text-rose-500">
-                    -$12.50
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
