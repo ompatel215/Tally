@@ -30,7 +30,11 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const url = request.nextUrl.clone()
-  const isAuthPage = url.pathname === '/login' || url.pathname === '/register'
+  const isAuthPage =
+    url.pathname === '/login' ||
+    url.pathname === '/register' ||
+    url.pathname === '/register/confirm' ||
+    url.pathname.startsWith('/auth/')
 
   // Unauthenticated users can only access auth pages
   if (!user && !isAuthPage) {

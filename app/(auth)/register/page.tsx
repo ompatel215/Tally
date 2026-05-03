@@ -37,39 +37,24 @@ export default function RegisterPage() {
     try {
       const supabase = createClient();
 
-      // 1. Create auth user (profile is auto-created via DB trigger)
-      const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { first_name: firstName, last_name: lastName } },
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+            org_name: orgName || `${firstName}'s Organization`,
+          },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
       if (signUpError) throw signUpError;
-      if (!user) throw new Error("Failed to create account");
 
-      // 2. Create the organization
-      const { data: org, error: orgError } = await supabase
-        .from("organizations")
-        .insert({ name: orgName || `${firstName}'s Organization` })
-        .select()
-        .single();
-      if (orgError) throw orgError;
-
-      // 3. Link the user as owner
-      const { error: memberError } = await supabase
-        .from("organization_members")
-        .insert({ organization_id: org.id, user_id: user.id, role: "owner" });
-      if (memberError) throw memberError;
-
-      // 4. Seed default chart of accounts
-      await supabase.from("chart_of_accounts").insert(
-        DEFAULT_ACCOUNTS.map((a) => ({ ...a, organization_id: org.id }))
-      );
-
-      router.push("/dashboard");
-      router.refresh();
+      setLoading(false);
+      router.push("/register/confirm");
     } catch (err: any) {
       setError(err.message || "Failed to create account");
-    } finally {
       setLoading(false);
     }
   }

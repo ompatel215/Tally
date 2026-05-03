@@ -26,38 +26,50 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- INSERT / UPDATE RLS policies (initial schema only had SELECT)
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
 CREATE POLICY "Users can insert their own profile"
   ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
 CREATE POLICY "Users can update their own profile"
   ON profiles FOR UPDATE USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Authenticated users can create organizations" ON organizations;
 CREATE POLICY "Authenticated users can create organizations"
   ON organizations FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Users can join organizations as themselves" ON organization_members;
 CREATE POLICY "Users can join organizations as themselves"
   ON organization_members FOR INSERT WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert accounts for their orgs" ON chart_of_accounts;
 CREATE POLICY "Users can insert accounts for their orgs"
   ON chart_of_accounts FOR INSERT WITH CHECK (user_has_org_access(organization_id));
 
+DROP POLICY IF EXISTS "Users can update accounts for their orgs" ON chart_of_accounts;
 CREATE POLICY "Users can update accounts for their orgs"
   ON chart_of_accounts FOR UPDATE USING (user_has_org_access(organization_id));
 
+DROP POLICY IF EXISTS "Users can insert vendors/customers for their orgs" ON entities;
 CREATE POLICY "Users can insert vendors/customers for their orgs"
   ON entities FOR INSERT WITH CHECK (user_has_org_access(organization_id));
 
+DROP POLICY IF EXISTS "Users can update vendors/customers for their orgs" ON entities;
 CREATE POLICY "Users can update vendors/customers for their orgs"
   ON entities FOR UPDATE USING (user_has_org_access(organization_id));
 
+DROP POLICY IF EXISTS "Users can insert expenses for their orgs" ON expenses;
 CREATE POLICY "Users can insert expenses for their orgs"
   ON expenses FOR INSERT WITH CHECK (user_has_org_access(organization_id));
 
+DROP POLICY IF EXISTS "Users can update expenses for their orgs" ON expenses;
 CREATE POLICY "Users can update expenses for their orgs"
   ON expenses FOR UPDATE USING (user_has_org_access(organization_id));
 
+DROP POLICY IF EXISTS "Users can insert receipts for their orgs" ON receipts;
 CREATE POLICY "Users can insert receipts for their orgs"
   ON receipts FOR INSERT WITH CHECK (user_has_org_access(organization_id));
 
+DROP POLICY IF EXISTS "Users can update receipts for their orgs" ON receipts;
 CREATE POLICY "Users can update receipts for their orgs"
   ON receipts FOR UPDATE USING (user_has_org_access(organization_id));
