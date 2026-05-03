@@ -15,14 +15,13 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const { data: membership } = await supabase
+  const { data: memberships } = await supabase
     .from("organization_members")
-    .select("id")
+    .select("organization_id")
     .eq("user_id", user.id)
-    .limit(1)
-    .single();
+    .limit(1);
 
-  if (!membership) {
+  if (!memberships || memberships.length === 0) {
     redirect("/register/setup");
   }
 

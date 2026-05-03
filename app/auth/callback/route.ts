@@ -26,10 +26,10 @@ export async function GET(request: Request) {
         // Check if user already has an org (e.g. re-confirming)
         const { data: existing } = await supabase
           .from('organization_members')
-          .select('id')
+          .select('organization_id')
           .eq('user_id', user.id)
           .limit(1)
-          .single()
+          .maybeSingle()
 
         if (!existing) {
           const orgName = user.user_metadata?.org_name || 'My Organization'
