@@ -34,6 +34,7 @@ export async function updateSession(request: NextRequest) {
     url.pathname === '/login' ||
     url.pathname === '/register' ||
     url.pathname === '/register/confirm' ||
+    url.pathname === '/register/setup' ||
     url.pathname.startsWith('/auth/')
 
   // Unauthenticated users can only access auth pages

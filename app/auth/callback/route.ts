@@ -34,21 +34,24 @@ export async function GET(request: Request) {
         if (!existing) {
           const orgName = user.user_metadata?.org_name || 'My Organization'
 
-          const { data: org } = await supabase
+          const { data: org, error: orgError } = await supabase
             .from('organizations')
             .insert({ name: orgName })
             .select()
             .single()
 
-          if (org) {
-            await supabase
-              .from('organization_members')
-              .insert({ organization_id: org.id, user_id: user.id, role: 'owner' })
-
-            await supabase
-              .from('chart_of_accounts')
-              .insert(DEFAULT_ACCOUNTS.map((a) => ({ ...a, organization_id: org.id })))
+          if (orgError || !org) {
+            // Org setup failed — redirect to setup page so user can retry
+            return NextResponse.redirect(`${origin}/register/setup`)
           }
+
+          await supabase
+            .from('organization_members')
+            .insert({ organization_id: org.id, user_id: user.id, role: 'owner' })
+
+          await supabase
+            .from('chart_of_accounts')
+            .insert(DEFAULT_ACCOUNTS.map((a) => ({ ...a, organization_id: org.id })))
         }
       }
 
