@@ -4,6 +4,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Badge } from "@/components/ui/badge";
 import { mockReceipts } from "@/lib/mockData";
 import { ReceiptStatus } from "@/types";
+import { createClient } from "@/lib/supabase/server";
+import { cn } from "@/lib/utils";
 
 const statusIcons: Record<ReceiptStatus, any> = {
   pending: Clock,
@@ -19,7 +21,15 @@ const statusColors: Record<ReceiptStatus, string> = {
   failed: "text-rose-500",
 };
 
-export default function ReceiptsPage() {
+export default async function ReceiptsPage() {
+  const supabase = await createClient();
+  const { data: receipts } = await supabase
+    .from('receipts')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  const displayReceipts = receipts && receipts.length > 0 ? receipts : mockReceipts;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -41,8 +51,8 @@ export default function ReceiptsPage() {
           <p className="text-xs text-muted-foreground">PNG, JPG or PDF up to 10MB</p>
         </Card>
 
-        {mockReceipts.map((receipt) => {
-          const StatusIcon = statusIcons[receipt.ocr_status];
+        {displayReceipts.map((receipt) => {
+          const StatusIcon = statusIcons[receipt.ocr_status as ReceiptStatus] || Clock;
           return (
             <Card key={receipt.id} className="overflow-hidden flex flex-col">
               <div className="aspect-[4/3] bg-muted flex items-center justify-center relative border-b">
@@ -61,12 +71,12 @@ export default function ReceiptsPage() {
               <CardContent className="p-4 pt-0 flex-1">
                 {receipt.extracted_amount ? (
                   <div className="mt-2">
-                    <p className="text-2xl font-bold">${receipt.extracted_amount.toFixed(2)}</p>
+                    <p className="text-2xl font-bold">${Number(receipt.extracted_amount).toFixed(2)}</p>
                     <p className="text-xs text-muted-foreground">{receipt.extracted_vendor}</p>
                   </div>
                 ) : (
                   <div className="mt-2 flex items-center gap-2 text-muted-foreground">
-                    <StatusIcon className={cn("h-4 w-4", statusColors[receipt.ocr_status])} />
+                    <StatusIcon className={cn("h-4 w-4", statusColors[receipt.ocr_status as ReceiptStatus])} />
                     <span className="text-xs">Processing data...</span>
                   </div>
                 )}
@@ -82,5 +92,3 @@ export default function ReceiptsPage() {
     </div>
   );
 }
-
-import { cn } from "@/lib/utils";

@@ -40,8 +40,11 @@ const formSchema = z.object({
   description: z.string().optional(),
 });
 
+import { createClient } from "@/lib/supabase/client";
+
 export function ExpenseForm() {
   const router = useRouter();
+  const supabase = createClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -57,13 +60,43 @@ export function ExpenseForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
     
-    console.log(values);
-    setIsSubmitting(false);
-    toast.success("Expense created successfully");
-    router.push("/expenses");
+    try {
+      // 1. Get the user and their first organization
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: membership } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!membership) throw new Error("No organization found for user");
+
+      // 2. Insert the expense
+      const { error } = await supabase
+        .from('expenses')
+        .insert({
+          amount: parseFloat(values.amount),
+          expense_date: values.expense_date,
+          vendor_id: values.vendor_id,
+          account_id: values.account_id,
+          description: values.description,
+          organization_id: membership.organization_id,
+          status: 'draft'
+        });
+
+      if (error) throw error;
+
+      toast.success("Expense created successfully");
+      router.push("/expenses");
+      router.refresh();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to create expense");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
