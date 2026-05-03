@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, FileText, CheckCircle2, Clock, AlertCircle, Trash2, Loader2 } from "lucide-react";
+import { Upload, FileText, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -16,30 +15,11 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { ReceiptStatus } from "@/types";
-
-const statusIcons: Record<ReceiptStatus, any> = {
-  pending: Clock,
-  processing: Clock,
-  completed: CheckCircle2,
-  failed: AlertCircle,
-};
-
-const statusColors: Record<ReceiptStatus, string> = {
-  pending: "text-slate-500",
-  processing: "text-blue-500 animate-pulse",
-  completed: "text-emerald-500",
-  failed: "text-rose-500",
-};
 
 type Receipt = {
   id: string;
   file_path: string;
   original_filename: string;
-  ocr_status: ReceiptStatus;
-  extracted_amount: number | null;
-  extracted_date: string | null;
-  extracted_vendor: string | null;
   created_at: string;
 };
 
@@ -67,7 +47,7 @@ export default function ReceiptsPage() {
       setOrgId(membership.organization_id);
       const { data } = await supabase
         .from("receipts")
-        .select("*")
+        .select("id, file_path, original_filename, created_at")
         .eq("organization_id", membership.organization_id)
         .order("created_at", { ascending: false });
       setReceipts((data as Receipt[]) || []);
@@ -100,9 +80,8 @@ export default function ReceiptsPage() {
           organization_id: orgId,
           file_path: path,
           original_filename: file.name,
-          ocr_status: "pending",
         })
-        .select()
+        .select("id, file_path, original_filename, created_at")
         .single();
       if (insertError) throw insertError;
 
@@ -203,54 +182,31 @@ export default function ReceiptsPage() {
         {loading ? (
           <div className="col-span-3 text-center py-12 text-muted-foreground">Loading...</div>
         ) : (
-          receipts.map((receipt) => {
-            const StatusIcon = statusIcons[receipt.ocr_status] || Clock;
-            return (
-              <Card key={receipt.id} className="overflow-hidden flex flex-col">
-                <div className="aspect-[4/3] bg-muted flex items-center justify-center relative border-b">
-                  <FileText className="h-12 w-12 text-muted-foreground/50" />
-                  <div className="absolute top-2 right-2">
-                    <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm">
-                      {receipt.ocr_status.toUpperCase()}
-                    </Badge>
-                  </div>
-                </div>
-                <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-sm truncate" title={receipt.original_filename}>
-                    {receipt.original_filename}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0 flex-1">
-                  {receipt.extracted_amount ? (
-                    <div className="mt-2">
-                      <p className="text-2xl font-bold">${Number(receipt.extracted_amount).toFixed(2)}</p>
-                      <p className="text-xs text-muted-foreground">{receipt.extracted_vendor}</p>
-                    </div>
-                  ) : (
-                    <div className="mt-2 flex items-center gap-2 text-muted-foreground">
-                      <StatusIcon className={cn("h-4 w-4", statusColors[receipt.ocr_status])} />
-                      <span className="text-xs">
-                        {receipt.ocr_status === "pending" ? "Awaiting processing" : "Processing..."}
-                      </span>
-                    </div>
-                  )}
-                </CardContent>
-                <CardFooter className="p-4 pt-0 border-t bg-muted/20 flex justify-between items-center h-10">
-                  <span className="text-[10px] text-muted-foreground">
-                    {format(new Date(receipt.created_at), "MMM d, yyyy")}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-destructive hover:text-destructive"
-                    onClick={() => setDeletingId(receipt.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </CardFooter>
-              </Card>
-            );
-          })
+          receipts.map((receipt) => (
+            <Card key={receipt.id} className="overflow-hidden flex flex-col">
+              <div className="aspect-[4/3] bg-muted flex items-center justify-center border-b">
+                <FileText className="h-12 w-12 text-muted-foreground/50" />
+              </div>
+              <CardHeader className="p-4 pb-2 flex-1">
+                <CardTitle className="text-sm truncate" title={receipt.original_filename}>
+                  {receipt.original_filename}
+                </CardTitle>
+              </CardHeader>
+              <CardFooter className="p-4 pt-0 border-t bg-muted/20 flex justify-between items-center h-10">
+                <span className="text-[10px] text-muted-foreground">
+                  {format(new Date(receipt.created_at), "MMM d, yyyy")}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-destructive hover:text-destructive"
+                  onClick={() => setDeletingId(receipt.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </CardFooter>
+            </Card>
+          ))
         )}
       </div>
 
